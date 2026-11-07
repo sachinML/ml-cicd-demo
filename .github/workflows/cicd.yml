@@ -52,3 +52,18 @@ jobs:
           docker tag "$IMAGE:${{ github.sha }}" "$IMAGE:latest"
           docker push "$IMAGE:${{ github.sha }}"
           docker push "$IMAGE:latest"
+
+  deploy:
+    needs: docker
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Render deployment
+        env:
+          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          test -n "$DEPLOY_HOOK"
+          curl --fail --show-error --silent \
+            --retry 3 \
+            -X POST "$DEPLOY_HOOK"
