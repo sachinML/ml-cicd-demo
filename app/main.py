@@ -22,3 +22,8 @@ def predict(customer: Customer):
     )
 
     return {"prediction": prediction}
+
+
+@app.get("/version")
+def version():
+    return {"version": "2.0"}
