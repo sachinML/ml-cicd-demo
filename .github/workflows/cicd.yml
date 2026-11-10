@@ -3,7 +3,7 @@ name: ML API CI/CD. # workflow's display name in the GitHub Actions tab.
 
 on:  # defines when GitHub should execute the workflow.
   push:
-    branches: [main]
+    branches: ['**'] # '**' matches branch names, including nested names such as feature/login
   pull_request:
     branches: [main] # refers to the target branch, not necessarily the branch containing the proposed changes.
     # For example, imagine you create a branch, You modify the FastAPI code, push that branch, and open a pull request into main, 
@@ -35,7 +35,7 @@ jobs: # jobs is where you define the tasks that GitHub Actions should execute.
 
   docker: # This job is responsible for building and publishing your application image.
     needs: test # This creates a dependency between jobs. The docker job starts only after the test job succeeds. If pytest fails, Docker publishing is skipped.
-    if: github.event_name == 'push' # This condition checks which GitHub event started the workflow. If the event was a push, execute this job. If it was a pull request, skip it.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' # This condition checks which GitHub event started the workflow. If the event was a push, execute this job. If it was a pull request, skip it. This condition ensures Docker images are published only for pushes to main.
     runs-on: ubuntu-latest # GitHub provisions another Ubuntu runner for the Docker job.
                            # This is a key distinction: the docker and test jobs run in separate environments. Files created in the first job are not automatically available in the second.
                            # That is why the Docker job needs its own checkout step.
@@ -65,7 +65,7 @@ jobs: # jobs is where you define the tasks that GitHub Actions should execute.
  # Note that latest means the image most recently assigned that tag, not necessarily the newest Git commit. Concurrent pipelines can publish out of order.
   deploy:
     needs: docker
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
