@@ -1,58 +1,68 @@
 
-name: ML API CI/CD
+name: ML API CI/CD. # workflow's display name in the GitHub Actions tab.
 
-on:
+on:  # defines when GitHub should execute the workflow.
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main] # refers to the target branch, not necessarily the branch containing the proposed changes.
+    # For example, imagine you create a branch, You modify the FastAPI code, push that branch, and open a pull request into main, 
+    # GitHub Actions automatically runs your tests before the PR is merged. This is useful because developers can validate their code before it reaches the main branch.
 
-permissions:
-  contents: read
-  packages: write
+permissions:  # Every GitHub Actions workflow can receive a temporary authentication token called GITHUB_TOKEN.
+  contents: read. # Allows checkout of your GitHub repository
+  packages: write # Allows publishing Docker images to GitHub Container Registry
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
+jobs: # jobs is where you define the tasks that GitHub Actions should execute.
+  test: # test is the job ID. You can name it something else, such as unit-tests, but the other jobs must refer to the correct ID.
+    runs-on: ubuntu-latest # tells GitHub to allocate an Ubuntu-based runner for this job. A runner is essentially a machine that executes your workflow steps.
+                          # GitHub provisions a separate environment to run the steps defined in your YAML. This means even though you're developing on macOS, your automated tests execute on Ubuntu.
+    steps: # defines an ordered sequence of operations inside a job.
+      - uses: actions/checkout@v4 # invokes a reusable GitHub Action. actions/checkout@v4 downloads the appropriate version of your repository into the runner's workspace.
+                                  # Without checkout, the runner would not have your app/main.py, requirements.txt, Dockerfile, or tests available by default.
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.12" # This prepares Python 3.12 on the runner. with supplies configuration inputs to the reusable action.
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install dependencies # name is a human-readable label shown in GitHub Actions logs.
+        run: pip install -r requirements.txt # run executes a shell command on the runner.
+                                             # This is equivalent to installing your dependencies locally, except it runs on GitHub's machine.
+                                             # It installs the libraries listed in your requirements.txt, such as FastAPI, Uvicorn, pytest, and httpx
 
-      - name: Run unit tests
-        run: python -m pytest -v
+      - name: Run unit tests 
+        run: python -m pytest -v # GitHub executes your unit tests. If a test fails, pytest normally returns a nonzero exit status, which causes the step and job to fail.
+                                # That matters because your next job depends on this one succeeding.
 
-  docker:
-    needs: test
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-
+  docker: # This job is responsible for building and publishing your application image.
+    needs: test # This creates a dependency between jobs. The docker job starts only after the test job succeeds. If pytest fails, Docker publishing is skipped.
+    if: github.event_name == 'push' # This condition checks which GitHub event started the workflow. If the event was a push, execute this job. If it was a pull request, skip it.
+    runs-on: ubuntu-latest # GitHub provisions another Ubuntu runner for the Docker job.
+                           # This is a key distinction: the docker and test jobs run in separate environments. Files created in the first job are not automatically available in the second.
+                           # That is why the Docker job needs its own checkout step.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4 # This downloads your repository into the Docker job's runner, so the Dockerfile and application code are available.
 
-      - name: Login to GitHub Container Registry
+      - name: Login to GitHub Container Registry # Before pushing a Docker image to GitHub Container Registry, the runner must authenticate.
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ghcr.io # 	Docker image registry
+          username: ${{ github.actor }} # GitHub account that triggered the workflow
+          password: ${{ secrets.GITHUB_TOKEN }} # 	Temporary credential issued for the workflow
+          # The syntax ${{ ... }} is called a GitHub Actions expression.
 
       - name: Build and push image
-        env:
-          IMAGE: ghcr.io/${{ github.repository }}
+        env: # defines environment variables.
+          IMAGE: ghcr.io/${{ github.repository }}  # IMAGE=ghcr.io/sachinML/ml-cicd-demo, But Docker repository names must use lowercase characters, so the next command converts the value:
         run: |
           IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
-          docker build -t "$IMAGE:${{ github.sha }}" .
+          docker build -t "$IMAGE:${{ github.sha }}"
           docker tag "$IMAGE:${{ github.sha }}" "$IMAGE:latest"
           docker push "$IMAGE:${{ github.sha }}"
           docker push "$IMAGE:latest"
-
+# ${{ github.sha }} is the Git commit SHA associated with the workflow run.
+# Why use a Git commit SHA instead of just v1? Because each commit gets a distinct image identifier, making it easier to trace which code created which image and to redeploy an earlier version.
+# latest: This creates another tag pointing to the same local Docker image.
+ # Note that latest means the image most recently assigned that tag, not necessarily the newest Git commit. Concurrent pipelines can publish out of order.
   deploy:
     needs: docker
     if: github.event_name == 'push'
@@ -67,3 +77,18 @@ jobs:
           curl --fail --show-error --silent \
             --retry 3 \
             -X POST "$DEPLOY_HOOK"
+
+# curl makes an HTTP request to Render. Render receives the deployment request and initiates a deployment of the configured image.
+# This command doesn't itself deploy your application or verify that the deployment is healthy. It only asks Render to initiate deployment.
+# You previously created a GitHub repository secret called RENDER_DEPLOY_HOOK_URL.
+
+# This line makes that secret available as an environment variable named DEPLOY_HOOK for this step.
+
+# So GitHub Actions can access the deployment URL without hardcoding it into your repository.
+
+# Option	Purpose
+# --fail	Treat HTTP 400/500-class responses as errors in most cases
+# --show-error	Display errors even when silent mode is enabled
+# --silent	Hide ordinary progress output
+# --retry 3	Retry certain transient failures
+# -X POST	Send an HTTP POST request
