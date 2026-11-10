@@ -10,7 +10,7 @@ on:  # defines when GitHub should execute the workflow.
     # GitHub Actions automatically runs your tests before the PR is merged. This is useful because developers can validate their code before it reaches the main branch.
 
 permissions:  # Every GitHub Actions workflow can receive a temporary authentication token called GITHUB_TOKEN.
-  contents: read. # Allows checkout of your GitHub repository
+  contents: read # Allows checkout of your GitHub repository
   packages: write # Allows publishing Docker images to GitHub Container Registry
 
 jobs: # jobs is where you define the tasks that GitHub Actions should execute.
