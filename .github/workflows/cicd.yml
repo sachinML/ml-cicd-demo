@@ -55,11 +55,12 @@ jobs: # jobs is where you define the tasks that GitHub Actions should execute.
           IMAGE: ghcr.io/${{ github.repository }}  # IMAGE=ghcr.io/sachinML/ml-cicd-demo, But Docker repository names must use lowercase characters, so the next command converts the value:
         run: |
           IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
-          docker build -t "$IMAGE:${{ github.sha }}"
+          docker build -t "$IMAGE:${{ github.sha }}" .
           docker tag "$IMAGE:${{ github.sha }}" "$IMAGE:latest"
           docker push "$IMAGE:${{ github.sha }}"
           docker push "$IMAGE:latest"
-# ${{ github.sha }} is the Git commit SHA associated with the workflow run.
+# ${{ github.sha }} . is the Git commit SHA associated with the workflow run.
+# The final . is important. It tells Docker to use the current directory as its build context.
 # Why use a Git commit SHA instead of just v1? Because each commit gets a distinct image identifier, making it easier to trace which code created which image and to redeploy an earlier version.
 # latest: This creates another tag pointing to the same local Docker image.
  # Note that latest means the image most recently assigned that tag, not necessarily the newest Git commit. Concurrent pipelines can publish out of order.
