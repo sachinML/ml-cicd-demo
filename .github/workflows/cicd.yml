@@ -64,6 +64,7 @@ jobs: # jobs is where you define the tasks that GitHub Actions should execute.
 # Why use a Git commit SHA instead of just v1? Because each commit gets a distinct image identifier, making it easier to trace which code created which image and to redeploy an earlier version.
 # latest: This creates another tag pointing to the same local Docker image.
  # Note that latest means the image most recently assigned that tag, not necessarily the newest Git commit. Concurrent pipelines can publish out of order.
+ 
   deploy:
     needs: docker
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -71,13 +72,104 @@ jobs: # jobs is where you define the tasks that GitHub Actions should execute.
 
     steps:
       - name: Trigger Render deployment
+        id: trigger
         env:
           DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          IMAGE: ghcr.io/${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
-          test -n "$DEPLOY_HOOK"
+          set -euo pipefail
+
+          IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          IMAGE_URL="$IMAGE:$COMMIT_SHA"
+
+          RESPONSE=$(curl --fail --show-error --silent --get \
+            --data-urlencode "imgURL=$IMAGE_URL" \
+            "$DEPLOY_HOOK")
+
+          DEPLOY_ID=$(echo "$RESPONSE" | jq -r '.deploy.id // empty')
+          test -n "$DEPLOY_ID" || {
+            echo "No deploy ID returned"
+            exit 1
+          }
+
+          echo "deploy_id=$DEPLOY_ID" >> "$GITHUB_OUTPUT"
+          echo "image_url=$IMAGE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Render deployment
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+          DEPLOY_ID: ${{ steps.trigger.outputs.deploy_id }}
+          EXPECTED_IMAGE: ${{ steps.trigger.outputs.image_url }}
+        run: |
+          set -euo pipefail
+
+          test -n "$RENDER_API_KEY"
+          test -n "$SERVICE_ID"
+
+          API_URL="https://api.render.com/v1/services/$SERVICE_ID/deploys/$DEPLOY_ID"
+
+          for i in {1..30}; do
+            RESPONSE=$(curl --fail --show-error --silent \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Accept: application/json" \
+              "$API_URL")
+
+            STATUS=$(echo "$RESPONSE" | jq -r '.status')
+            echo "Deployment status: $STATUS"
+
+            case "$STATUS" in
+              live)
+                ACTUAL_IMAGE=$(echo "$RESPONSE" | jq -r '.image.ref // empty')
+                if [[ "$ACTUAL_IMAGE" != "$EXPECTED_IMAGE" ]]; then
+                  echo "Wrong image deployed"
+                  exit 1
+                fi
+                echo "Expected image is live"
+                exit 0
+                ;;
+              build_failed|update_failed|pre_deploy_failed|canceled|deactivated)
+                echo "Render deployment failed: $STATUS"
+                exit 1
+                ;;
+            esac
+
+            sleep 10
+          done
+
+          echo "Deployment timed out"
+          exit 1
+
+      - name: Verify application health
+        env:
+          APP_URL: ${{ vars.RENDER_APP_URL }}
+        run: |
+          set -euo pipefail
+
+          test -n "$APP_URL"
+
           curl --fail --show-error --silent \
-            --retry 3 \
-            -X POST "$DEPLOY_HOOK"
+            --retry 5 \
+            --retry-delay 5 \
+            "${APP_URL%/}/health" | jq -e '.status == "healthy"'
+
+          echo "Application health check passed"
+ 
+#  deploy:
+#     needs: docker
+#     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - name: Trigger Render deployment
+#         env:
+#           DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+#         run: |
+#           test -n "$DEPLOY_HOOK"
+#           curl --fail --show-error --silent \
+#             --retry 3 \
+#             -X POST "$DEPLOY_HOOK"
 
 # curl makes an HTTP request to Render. Render receives the deployment request and initiates a deployment of the configured image.
 # This command doesn't itself deploy your application or verify that the deployment is healthy. It only asks Render to initiate deployment.
