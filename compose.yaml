@@ -1,0 +1,15 @@
+
+services:
+  staging:
+    image: ml-api:${STAGING_VERSION:-v4}
+    ports:
+      - "8001:8000"
+    environment:
+      APP_ENV: staging
+
+  production:
+    image: ml-api:${PRODUCTION_VERSION:-v3}
+    ports:
+      - "8002:8000"
+    environment:
+      APP_ENV: production

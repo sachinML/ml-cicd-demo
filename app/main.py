@@ -26,4 +26,13 @@ def predict(customer: Customer):
 
 @app.get("/version")
 def version():
-    return {"version": "3.0"}
+    return {"version": "4.0"}
+
+
+import os
+
+@app.get("/environment")
+def environment():
+    return {
+        "environment": os.getenv("APP_ENV", "development")
+    }
