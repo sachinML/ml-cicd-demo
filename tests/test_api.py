@@ -18,3 +18,7 @@ def test_prediction():
 
     assert response.status_code == 200
     assert response.json()["prediction"] == 1
+
+
+def test_intentional_failure():
+    assert 1 == 2
