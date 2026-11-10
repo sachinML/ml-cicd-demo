@@ -1,0 +1,21 @@
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-api
+spec:
+  type: ClusterIP
+  selector:
+    app: ml-api
+  ports:
+    - port: 8000
+      targetPort: 8000
+
+
+# service.yaml primarily manages the networking and accessibility of your Pods.
+
+# It handles four important things:
+# 1. Stable IP address and DNS name: Other applications can access your FastAPI service using ml-api instead of individual Pod IPs.
+# 2. Port mapping: Maps a Service port (e.g., 80) to your container's port (8000).
+# 3. Traffic distribution: Routes requests across healthy, ready Pods.
+# 4. Service discovery: Automatically identifies matching Pods through labels, even when Pods are replaced.
