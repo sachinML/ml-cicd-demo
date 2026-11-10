@@ -18,3 +18,7 @@ def test_prediction():
 
     assert response.status_code == 200
     assert response.json()["prediction"] == 1
+
+
+def test_branch_protection():
+    assert 1 == 2
